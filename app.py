@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-from matplotlib.widgets import Button, Slider, RectangleSelector
+from matplotlib.widgets import Button, Slider, RectangleSelector, TextBox
 import os
 from tkinter import Tk, filedialog
 from matplotlib.colors import hsv_to_rgb
@@ -11,66 +11,76 @@ class ImageEditor:
         self.current_image = None
         self.original_image = None
         self.filename = None
+        self.second_image = None  # Para almacenar la segunda imagen en fusión
     
     def load_image(self, filepath=None):
         """Carga una imagen desde un archivo."""
-        if filepath is None:
+        try:
             root = Tk()
             root.withdraw()  # Ocultar la ventana principal
-            filepath = filedialog.askopenfilename(
-                title="Seleccionar imagen",
-                filetypes=[("Archivos de imagen", "*.jpg;*.jpeg;*.png;*.bmp")]
-            )
+            if filepath is None:
+                filepath = filedialog.askopenfilename(
+                    title="Seleccionar imagen",
+                    filetypes=[("Archivos de imagen", "*.jpg;*.jpeg;*.png;*.bmp")]
+                )
+                
             root.destroy()
-            
+                
             if not filepath:  # Si el usuario cancela
                 return None
                 
-        self.filename = os.path.basename(filepath)
-        img = mpimg.imread(filepath)
-        
-        # Asegurarse de que la imagen sea un array con valores entre 0-1
-        if img.dtype == np.uint8:
-            img = img.astype(float) / 255.0
+            self.filename = os.path.basename(filepath)
+            img = mpimg.imread(filepath)
             
-        # Si la imagen es grayscale, convertirla a RGB
-        if len(img.shape) == 2:
-            img = np.stack([img, img, img], axis=2)
-        
-        # Si la imagen tiene canal alpha (RGBA), convertirla a RGB
-        if img.shape[2] == 4:
-            # Extraer solo los canales RGB
-            img = img[:, :, :3]
+            # Asegurarse de que la imagen sea un array con valores entre 0-1
+            if img.dtype == np.uint8:
+                img = img.astype(float) / 255.0
+                
+            # Si la imagen es grayscale, convertirla a RGB
+            if len(img.shape) == 2:
+                img = np.stack([img, img, img], axis=2)
             
-        self.current_image = img
-        self.original_image = img.copy()
-        return img
+            # Si la imagen tiene canal alpha (RGBA), convertirla a RGB
+            if img.shape[2] == 4:
+                # Extraer solo los canales RGB
+                img = img[:, :, :3]
+                
+            self.current_image = img
+            self.original_image = img.copy()
+            return img
+        except Exception as e:
+            print(f"Error al cargar la imagen: {e}")
+            return None
     
     def save_image(self, filepath=None):
         """Guarda la imagen actual en un archivo."""
         if self.current_image is None:
             print("No hay imagen para guardar.")
             return
-            
-        if filepath is None:
+        
+        try:    
             root = Tk()
             root.withdraw()
             default_name = f"edited_{self.filename}" if self.filename else "edited_image.png"
-            filepath = filedialog.asksaveasfilename(
-                title="Guardar imagen como",
-                defaultextension=".png",
-                initialfile=default_name,
-                filetypes=[("PNG", "*.png"), ("JPEG", "*.jpg"), ("Todos los archivos", "*.*")]
-            )
+            if filepath is None:
+                filepath = filedialog.asksaveasfilename(
+                    title="Guardar imagen como",
+                    defaultextension=".png",
+                    initialfile=default_name,
+                    filetypes=[("PNG", "*.png"), ("JPEG", "*.jpg"), ("Todos los archivos", "*.*")]
+                )
+                
             root.destroy()
-            
+                
             if not filepath:  # Si el usuario cancela
                 return
                 
-        # Convertir la imagen a uint8 para guardarla
-        img_to_save = (self.current_image * 255).astype(np.uint8)
-        plt.imsave(filepath, img_to_save)
-        print(f"Imagen guardada en {filepath}")
+            # Convertir la imagen a uint8 para guardarla
+            img_to_save = (self.current_image * 255).astype(np.uint8)
+            plt.imsave(filepath, img_to_save)
+            print(f"Imagen guardada en {filepath}")
+        except Exception as e:
+            print(f"Error al guardar la imagen: {e}")
     
     def display_image(self, image=None, title=None):
         """Muestra una imagen en una ventana de matplotlib."""
@@ -243,17 +253,80 @@ class ImageEditor:
     
     def merge_images_without_equalization(self, image1=None, image2=None):
         """
-        Fusiona dos imágenes sin ecualizar (función 11 del Taller 8).
+        Fusiona dos imágenes sin ecualizar.
         La fusión se hace promediando los valores de cada píxel.
         """
         if image1 is None:
             image1 = self.current_image
             
-        if image2 is None:
-            # Cargar segunda imagen
-            print("Seleccione la segunda imagen para fusionar:")
-            image2 = self.load_image()
-            self.current_image = image1  # Restaurar la imagen actual
+        if image2 is None and self.second_image is None:
+            # Guardar la imagen actual temporalmente
+            temp_image = self.current_image
+            
+            # Abrir selector de archivos sin interferir con el bucle de eventos de matplotlib
+            import threading
+            import os
+            from tkinter import Tk, filedialog
+            
+            # Variable para almacenar la ruta del archivo seleccionado
+            selected_filepath = [None]
+            
+            def file_dialog():
+                root = Tk()
+                root.withdraw()
+                # Asegurar que la ventana aparezca por encima
+                root.attributes('-topmost', True)
+                # Seleccionar archivo
+                filepath = filedialog.askopenfilename(
+                    parent=root,
+                    title="Seleccionar segunda imagen",
+                    filetypes=[("Archivos de imagen", "*.jpg;*.jpeg;*.png;*.bmp")]
+                )
+                selected_filepath[0] = filepath
+                root.destroy()
+            
+            # Ejecutar diálogo en un hilo separado
+            dialog_thread = threading.Thread(target=file_dialog)
+            dialog_thread.start()
+            dialog_thread.join()  # Esperar a que se complete
+            
+            # Procesar la imagen seleccionada
+            filepath = selected_filepath[0]
+            if filepath:
+                try:
+                    import matplotlib.image as mpimg
+                    import numpy as np
+                    
+                    img = mpimg.imread(filepath)
+                    
+                    # Asegurarse de que la imagen sea un array con valores entre 0-1
+                    if img.dtype == np.uint8:
+                        img = img.astype(float) / 255.0
+                        
+                    # Si la imagen es grayscale, convertirla a RGB
+                    if len(img.shape) == 2:
+                        img = np.stack([img, img, img], axis=2)
+                    
+                    # Si la imagen tiene canal alpha (RGBA), convertirla a RGB
+                    if img.shape[2] == 4:
+                        # Extraer solo los canales RGB
+                        img = img[:, :, :3]
+                        
+                    self.second_image = img
+                    
+                except Exception as e:
+                    print(f"Error al cargar la segunda imagen: {e}")
+                    self.current_image = temp_image
+                    return None
+            else:
+                print("No se seleccionó ninguna imagen.")
+                return None
+                
+            # Restaurar la imagen actual
+            image2 = self.second_image
+            
+        elif image2 is None:
+            image2 = self.second_image
             
         if image1 is None or image2 is None:
             print("Faltan imágenes para fusionar.")
@@ -262,45 +335,32 @@ class ImageEditor:
         # Asegurar que las imágenes tengan las mismas dimensiones
         if image1.shape != image2.shape:
             # Redimensionar la segunda imagen para que coincida con la primera
-            from skimage.transform import resize
-            image2 = resize(image2, image1.shape, mode='reflect', anti_aliasing=True)
+            try:
+                from skimage.transform import resize
+                image2 = resize(image2, image1.shape, mode='reflect', anti_aliasing=True)
+            except ImportError:
+                # Alternativa si no está disponible skimage
+                # Implementación básica basada en tu código de fusión alternativo
+                altura, ancho = image1.shape[:2]
+                temp_image2 = np.zeros_like(image1)
+                
+                # Redimensionar manualmente cada canal
+                for i in range(3):  # Para cada canal RGB
+                    img2_channel = image2[:,:,i]
+                    # Redimensionar utilizando interpolación
+                    y_orig, x_orig = np.mgrid[0:image2.shape[0]-1:complex(0,altura), 
+                                            0:image2.shape[1]-1:complex(0,ancho)]
+                    y_new = np.linspace(0, image2.shape[0]-1, altura)
+                    x_new = np.linspace(0, image2.shape[1]-1, ancho)
+                    
+                    from scipy import interpolate
+                    f = interpolate.interp2d(np.arange(image2.shape[1]), np.arange(image2.shape[0]), img2_channel)
+                    temp_image2[:,:,i] = f(x_new, y_new)
+                
+                image2 = temp_image2
             
         # Fusionar las imágenes promediando sus valores
         merged = (image1 + image2) / 2
-        
-        self.current_image = merged
-        return merged
-    
-    def merge_images_with_equalization(self, image1=None, image2=None):
-        """
-        Fusiona dos imágenes ecualizadas (función 12 del Taller 8).
-        Primero ecualiza ambas imágenes y luego las fusiona.
-        """
-        if image1 is None:
-            image1 = self.current_image
-            
-        if image2 is None:
-            # Cargar segunda imagen
-            print("Seleccione la segunda imagen para fusionar:")
-            image2 = self.load_image()
-            self.current_image = image1  # Restaurar la imagen actual
-            
-        if image1 is None or image2 is None:
-            print("Faltan imágenes para fusionar.")
-            return None
-            
-        # Asegurar que las imágenes tengan las mismas dimensiones
-        if image1.shape != image2.shape:
-            # Redimensionar la segunda imagen para que coincida con la primera
-            from skimage.transform import resize
-            image2 = resize(image2, image1.shape, mode='reflect', anti_aliasing=True)
-            
-        # Ecualizar ambas imágenes (factor 1.5 como ejemplo)
-        equalized1 = self.equalize_image(image1, 1.5)
-        equalized2 = self.equalize_image(image2, 1.5)
-        
-        # Fusionar las imágenes ecualizadas
-        merged = (equalized1 + equalized2) / 2
         
         self.current_image = merged
         return merged
@@ -419,8 +479,10 @@ class ImageEditor:
             print("No hay imagen para ajustar.")
             return None
             
-        # Multiplicar todos los píxeles por el factor y recortar al rango [0, 1]
-        adjusted = np.clip(image * factor, 0, 1)
+        # Implementación correcta de ajuste de brillo: 
+        # Añadir un valor constante a todos los píxeles
+        # factor > 0 aumenta brillo, factor < 0 disminuye brillo
+        adjusted = np.clip(image + factor - 1.0, 0, 1)
         
         self.current_image = adjusted
         return adjusted
@@ -566,36 +628,44 @@ class ImageEditor:
             print("No hay imagen para rotar.")
             return None
             
-        # Implementar rotación usando numpy
+        # Implementar rotación usando numpy para los ángulos comunes
         if angle == 90:
             rotated = np.rot90(image, k=1)
         elif angle == 180:
             rotated = np.rot90(image, k=2)
-        elif angle == 270:
+        elif angle == 270 or angle == -90:
             rotated = np.rot90(image, k=3)
         else:
-            # Para ángulos arbitrarios, usamos matplotlib
-            from matplotlib import transforms
+            # Para ángulos arbitrarios, usamos scipy con mejor manejo de memoria
+            from scipy import ndimage
             
-            # Crear figura temporal para la rotación
-            fig, ax = plt.subplots(figsize=(10, 10))
-            ax.imshow(image)
-            
-            # Aplicar la transformación de rotación
-            transform = transforms.Affine2D().rotate_deg(angle) + ax.transData
-            ax.images[0].set_transform(transform)
-            
-            # Ajustar los límites
-            ax.set_xlim(0, image.shape[1])
-            ax.set_ylim(image.shape[0], 0)
-            
-            # Capturar la imagen rotada
-            fig.canvas.draw()
-            data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-            data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-            rotated = data / 255.0  # Normalizar a [0, 1]
-            
-            plt.close(fig)
+            # Reducir resolución temporalmente para ángulos arbitrarios 
+            # si la imagen es grande (mejora rendimiento)
+            h, w = image.shape[:2]
+            if h > 1000 or w > 1000:
+                from skimage.transform import resize
+                # Reducir tamaño para procesamiento
+                scale_factor = 1000 / max(h, w)
+                small_img = resize(image, (int(h*scale_factor), int(w*scale_factor)), 
+                                mode='reflect', anti_aliasing=True)
+                
+                # Rotar la imagen reducida
+                rotated = ndimage.rotate(small_img, angle, reshape=True, mode='reflect')
+                
+                # Volver a escalar al tamaño original si es necesario
+                if angle % 90 != 0:  # Solo para ángulos que cambian las dimensiones
+                    new_h, new_w = rotated.shape[:2]
+                    # Calcular el factor de escala para volver al tamaño aproximado original
+                    target_size = max(h, w)
+                    scale_back = target_size / max(new_h, new_w)
+                    rotated = resize(rotated, (int(new_h*scale_back), int(new_w*scale_back)), 
+                                    mode='reflect', anti_aliasing=True)
+            else:
+                # Si la imagen no es tan grande, rotar directamente
+                rotated = ndimage.rotate(image, angle, reshape=True, mode='reflect')
+                
+            # Recortar valores fuera de rango
+            rotated = np.clip(rotated, 0, 1)
         
         self.current_image = rotated
         return rotated
@@ -633,7 +703,7 @@ class ImageEditor:
 
     def create_ui(self):
         """
-        Crea una interfaz gráfica simple para el editor de imágenes.
+        Crea una interfaz gráfica mejorada para el editor de imágenes.
         """
         # Cargar una imagen para empezar
         if self.current_image is None:
@@ -651,214 +721,267 @@ class ImageEditor:
         ax.set_title("Editor de Imágenes")
         ax.axis('off')
         
-        # Crear botones para las diferentes funciones
-        buttons_height = 0.05
-        buttons_width = 0.1
-        buttons_spacing = 0.01
+        # Reorganizar la interfaz para mostrar controles en los laterales y abajo
+        # Añadir un espacio para sliders y controles a la derecha de la imagen
         
-        # Primera fila de botones
-        button_positions = [
+        # Definir áreas y disposición de la interfaz
+        fig.subplots_adjust(left=0.05, right=0.85, bottom=0.15, top=0.95)
+        
+        # Área para botones principales en la parte inferior
+        button_width = 0.07
+        button_height = 0.04
+        button_spacing = 0.01
+        
+        # Primera fila de botones (abajo)
+        button_row1_y = 0.05
+        buttons_row1 = [
             ('Cargar', 0.05),
-            ('Guardar', 0.16),
-            ('Original', 0.27),
-            ('Invertir', 0.38),
-            ('Rojo', 0.49),
-            ('Verde', 0.60),
-            ('Azul', 0.71),
-            ('Gris Avg', 0.82)
+            ('Guardar', 0.13),
+            ('Original', 0.21),
+            ('Invertir', 0.29),
+            ('Rojo', 0.37),
+            ('Verde', 0.45),
+            ('Azul', 0.53),
+            ('Gris Avg', 0.61),
+            ('Histograma', 0.69),
+            ('Salir', 0.77)
         ]
         
-        buttons = []
-        for label, position in button_positions:
-            ax_button = plt.axes([position, 0.01, buttons_width, buttons_height])
+        buttons1 = []
+        for label, position in buttons_row1:
+            ax_button = plt.axes([position, button_row1_y, button_width, button_height])
             button = Button(ax_button, label)
-            buttons.append(button)
+            buttons1.append(button)
             
-        # Segunda fila de botones
-        button_positions2 = [
+        # Segunda fila de botones (abajo)
+        button_row2_y = 0.10
+        buttons_row2 = [
             ('Magenta', 0.05),
-            ('Cyan', 0.16),
-            ('Amarillo', 0.27),
-            ('Brillo +', 0.38),
-            ('Brillo -', 0.49),
-            ('Contraste +', 0.60),
-            ('Binarizar', 0.71),
-            ('Rotar', 0.82)
+            ('Cyan', 0.13),
+            ('Amarillo', 0.21),
+            ('Gris Lum', 0.29),
+            ('Gris Mid', 0.37),
+            ('Zoom', 0.45),
+            ('Fusionar', 0.53),
+            ('Ecualizar', 0.61),
+            ('Promedio', 0.69),
+            ('Binarizar', 0.77)
         ]
         
         buttons2 = []
-        for label, position in button_positions2:
-            ax_button = plt.axes([position, 0.07, buttons_width, buttons_height])
+        for label, position in buttons_row2:
+            ax_button = plt.axes([position, button_row2_y, button_width, button_height])
             button = Button(ax_button, label)
             buttons2.append(button)
             
-        # Tercera fila de botones
-        button_positions3 = [
-            ('Gris Lum', 0.05),
-            ('Gris Mid', 0.16),
-            ('Histograma', 0.27),
-            ('Zoom', 0.38),
-            ('Fusionar', 0.49),
-            ('Ecualizar', 0.60),
-            ('Promedio', 0.71),
-            ('Salir', 0.82)
-        ]
+        # Controles a la derecha
+        right_panel_x = 0.87
+        control_width = 0.1
+        control_height = 0.03
         
-        buttons3 = []
-        for label, position in button_positions3:
-            ax_button = plt.axes([position, 0.13, buttons_width, buttons_height])
-            button = Button(ax_button, label)
-            buttons3.append(button)
-            
-        # Funciones de callback para los botones
-        def on_load(event):
+        # Slider para brillo
+        brightness_slider_ax = plt.axes([right_panel_x, 0.8, control_width, control_height])
+        brightness_slider = Slider(
+            brightness_slider_ax, 'Brillo', 
+            0.0, 2.0, 
+            valinit=1.0, 
+            valstep=0.1
+        )
+        
+        # Slider para contraste
+        contrast_slider_ax = plt.axes([right_panel_x, 0.7, control_width, control_height])
+        contrast_slider = Slider(
+            contrast_slider_ax, 'Contraste', 
+            0.1, 3.0, 
+            valinit=1.0, 
+            valstep=0.1
+        )
+        
+        # Slider para umbral de binarización (AGREGADO)
+        binarize_slider_ax = plt.axes([right_panel_x, 0.6, control_width, control_height])
+        binarize_slider = Slider(
+            binarize_slider_ax, 'Umbral', 
+            0.0, 1.0, 
+            valinit=0.5, 
+            valstep=0.05
+        )
+        
+        # Botones para aplicar brillo y contraste
+        apply_brightness_ax = plt.axes([right_panel_x, 0.5, control_width, control_height])
+        apply_brightness_button = Button(apply_brightness_ax, 'Aplicar Brillo')
+        
+        apply_contrast_ax = plt.axes([right_panel_x, 0.4, control_width, control_height])
+        apply_contrast_button = Button(apply_contrast_ax, 'Aplicar Contraste')
+        
+        # Botones para rotación
+        rotate_90_ax = plt.axes([right_panel_x, 0.3, control_width, control_height])
+        rotate_90_button = Button(rotate_90_ax, 'Rotar 90°')
+        
+        rotate_180_ax = plt.axes([right_panel_x, 0.25, control_width, control_height])
+        rotate_180_button = Button(rotate_180_ax, 'Rotar 180°')
+        
+        rotate_270_ax = plt.axes([right_panel_x, 0.2, control_width, control_height])
+        rotate_270_button = Button(rotate_270_ax, 'Rotar 270°')
+        
+        # Textbox para rotación personalizada
+        rotate_custom_ax = plt.axes([right_panel_x, 0.15, control_width, control_height])
+        rotate_custom_textbox = TextBox(rotate_custom_ax, 'Ángulo:', initial='0')
+        
+        rotate_apply_ax = plt.axes([right_panel_x, 0.1, control_width, control_height])
+        rotate_apply_button = Button(rotate_apply_ax, 'Aplicar Rot.')
+        
+        # Definir callbacks para los botones y sliders
+        def update_display():
+            """Actualiza la imagen mostrada en la interfaz."""
+            img_display.set_data(self.current_image)
+            fig.canvas.draw_idle()
+        
+        # Callbacks para la primera fila de botones
+        def on_load_button(event):
             self.load_image()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_save(event):
+            update_display()
+        
+        def on_save_button(event):
             self.save_image()
-            
-        def on_original(event):
+        
+        def on_original_button(event):
             self.current_image = self.original_image.copy()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_invert(event):
+            update_display()
+        
+        def on_invert_button(event):
             self.invert_colors()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_red(event):
-            self.current_image = self.extract_red_channel()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_green(event):
-            self.current_image = self.extract_green_channel()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_blue(event):
-            self.current_image = self.extract_blue_channel()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_gray_avg(event):
+            update_display()
+        
+        def on_red_button(event):
+            self.extract_red_channel()
+            update_display()
+        
+        def on_green_button(event):
+            self.extract_green_channel()
+            update_display()
+        
+        def on_blue_button(event):
+            self.extract_blue_channel()
+            update_display()
+        
+        def on_gray_avg_button(event):
             self.convert_to_grayscale_average()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_magenta(event):
-            self.convert_to_magenta()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_cyan(event):
-            self.convert_to_cyan()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_yellow(event):
-            self.convert_to_yellow()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_brightness_up(event):
-            self.adjust_brightness(factor=1.2)
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_brightness_down(event):
-            self.adjust_brightness(factor=0.8)
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_contrast_up(event):
-            self.adjust_contrast(factor=1.5)
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_binarize(event):
-            self.binarize_image(threshold=0.5)
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_rotate(event):
-            self.rotate_image(angle=90)
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_gray_lum(event):
-            self.convert_to_grayscale_luminosity()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_gray_mid(event):
-            self.convert_to_grayscale_midgray()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_histogram(event):
+            update_display()
+        
+        def on_histogram_button(event):
             self.compute_histogram()
-            
-        def on_zoom(event):
-            plt.close(fig)  # Cerrar ventana actual
-            zoomed = self.zoom_image()
-            if zoomed is not None:
-                self.create_ui()  # Reabrir la interfaz con la imagen ampliada
-            
-        def on_merge(event):
-            plt.close(fig)  # Cerrar ventana actual
-            merged = self.merge_images_without_equalization()
-            if merged is not None:
-                self.create_ui()  # Reabrir la interfaz con la imagen fusionada
-            
-        def on_equalize(event):
-            self.equalize_image(factor=1.5)
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_average(event):
-            self.apply_average_technique()
-            img_display.set_data(self.current_image)
-            fig.canvas.draw_idle()
-            
-        def on_exit(event):
+        
+        def on_exit_button(event):
             plt.close(fig)
-            
-        # Asignar funciones a los botones
-        buttons[0].on_clicked(on_load)
-        buttons[1].on_clicked(on_save)
-        buttons[2].on_clicked(on_original)
-        buttons[3].on_clicked(on_invert)
-        buttons[4].on_clicked(on_red)
-        buttons[5].on_clicked(on_green)
-        buttons[6].on_clicked(on_blue)
-        buttons[7].on_clicked(on_gray_avg)
         
-        buttons2[0].on_clicked(on_magenta)
-        buttons2[1].on_clicked(on_cyan)
-        buttons2[2].on_clicked(on_yellow)
-        buttons2[3].on_clicked(on_brightness_up)
-        buttons2[4].on_clicked(on_brightness_down)
-        buttons2[5].on_clicked(on_contrast_up)
-        buttons2[6].on_clicked(on_binarize)
-        buttons2[7].on_clicked(on_rotate)
+        # Callbacks para la segunda fila de botones
+        def on_magenta_button(event):
+            self.convert_to_magenta()
+            update_display()
         
-        buttons3[0].on_clicked(on_gray_lum)
-        buttons3[1].on_clicked(on_gray_mid)
-        buttons3[2].on_clicked(on_histogram)
-        buttons3[3].on_clicked(on_zoom)
-        buttons3[4].on_clicked(on_merge)
-        buttons3[5].on_clicked(on_equalize)
-        buttons3[6].on_clicked(on_average)
-        buttons3[7].on_clicked(on_exit)
+        def on_cyan_button(event):
+            self.convert_to_cyan()
+            update_display()
         
-        plt.subplots_adjust(bottom=0.2)
+        def on_yellow_button(event):
+            self.convert_to_yellow()
+            update_display()
+        
+        def on_gray_lum_button(event):
+            self.convert_to_grayscale_luminosity()
+            update_display()
+        
+        def on_gray_mid_button(event):
+            self.convert_to_grayscale_midgray()
+            update_display()
+        
+        def on_zoom_button(event):
+            self.zoom_image()
+            update_display()
+        
+        def on_merge_button(event):
+            self.merge_images_without_equalization()
+            update_display()
+        
+        def on_equalize_button(event):
+            self.equalize_image(factor=1.5)
+            update_display()
+        
+        def on_average_button(event):
+            self.apply_average_technique()
+            update_display()
+        
+        def on_binarize_button(event):
+            threshold = binarize_slider.val
+            self.binarize_image(threshold=threshold)
+            update_display()
+        
+        # Callbacks para los sliders y botones de control
+        def on_apply_brightness(event):
+            factor = brightness_slider.val
+            self.adjust_brightness(factor=factor)
+            update_display()
+        
+        def on_apply_contrast(event):
+            factor = contrast_slider.val
+            self.adjust_contrast(factor=factor)
+            update_display()
+        
+        def on_rotate_90(event):
+            self.rotate_image(angle=90)
+            update_display()
+        
+        def on_rotate_180(event):
+            self.rotate_image(angle=180)
+            update_display()
+        
+        def on_rotate_270(event):
+            self.rotate_image(angle=270)
+            update_display()
+        
+        def on_rotate_custom(event):
+            try:
+                angle = float(rotate_custom_textbox.text)
+                self.rotate_image(angle=angle)
+                update_display()
+            except ValueError:
+                print("Por favor ingrese un valor numérico para el ángulo.")
+        
+        # Conectar callbacks a los botones de la primera fila
+        buttons1[0].on_clicked(on_load_button)
+        buttons1[1].on_clicked(on_save_button)
+        buttons1[2].on_clicked(on_original_button)
+        buttons1[3].on_clicked(on_invert_button)
+        buttons1[4].on_clicked(on_red_button)
+        buttons1[5].on_clicked(on_green_button)
+        buttons1[6].on_clicked(on_blue_button)
+        buttons1[7].on_clicked(on_gray_avg_button)
+        buttons1[8].on_clicked(on_histogram_button)
+        buttons1[9].on_clicked(on_exit_button)
+        
+        # Conectar callbacks a los botones de la segunda fila
+        buttons2[0].on_clicked(on_magenta_button)
+        buttons2[1].on_clicked(on_cyan_button)
+        buttons2[2].on_clicked(on_yellow_button)
+        buttons2[3].on_clicked(on_gray_lum_button)
+        buttons2[4].on_clicked(on_gray_mid_button)
+        buttons2[5].on_clicked(on_zoom_button)
+        buttons2[6].on_clicked(on_merge_button)
+        buttons2[7].on_clicked(on_equalize_button)
+        buttons2[8].on_clicked(on_average_button)
+        buttons2[9].on_clicked(on_binarize_button)
+        
+        # Conectar callbacks a los controles de la derecha
+        apply_brightness_button.on_clicked(on_apply_brightness)
+        apply_contrast_button.on_clicked(on_apply_contrast)
+        rotate_90_button.on_clicked(on_rotate_90)
+        rotate_180_button.on_clicked(on_rotate_180)
+        rotate_270_button.on_clicked(on_rotate_270)
+        rotate_apply_button.on_clicked(on_rotate_custom)
+        
         plt.show()
 
-# Código para ejecutar la aplicación
+# Para usar la clase ImageEditor, necesitamos crear una instancia y llamar a create_ui()
 if __name__ == "__main__":
     editor = ImageEditor()
     editor.create_ui()
